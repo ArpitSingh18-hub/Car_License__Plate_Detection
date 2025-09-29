@@ -6,7 +6,7 @@ import cv2
 import tempfile
 import os
 import time
-import torch 
+# Removed unnecessary imports like 'torch' now that we rely on stable versions
 
 # --- Configuration ---
 # ⚠️ ACTION REQUIRED: Ensure 'best.pt' is in the root of your repository
@@ -20,29 +20,18 @@ DEFAULT_INFERENCE_SIZE = 480
 @st.cache_resource 
 def load_yolo_model(path):
     """
-    Loads the YOLOv8 model using PyTorch's torch.load() to safely handle 
-    cross-OS dependency issues (like map_location='cpu') before initializing YOLO.
+    Loads the YOLOv8 model using the simplest method, relying entirely 
+    on the stable, pinned dependencies to resolve cross-OS issues.
     """
     st.info("Loading model... Please wait.")
     try:
-        # 1. CRITICAL FIX: Use torch.load() to load the weights directly with the cross-OS fix.
-        # This tells PyTorch to load the model's weights onto the CPU and ignore 
-        # any platform-specific dependencies (like DLLs/Windows paths) saved in the checkpoint.
-        weights = torch.load(path, map_location='cpu')
-
-        # 2. Save the loaded weights dictionary to a new temporary file.
-        # This strips the checkpoint of potentially corrupting original metadata/paths.
-        temp_path = os.path.join(tempfile.gettempdir(), 'fixed_best.pt')
-        torch.save(weights, temp_path)
-
-        # 3. Initialize the YOLO model using the CLEANED weights file path.
-        # This avoids the 'unexpected keyword argument' error.
-        model = YOLO(temp_path, task='detect')
+        # CRITICAL FIX: Simply pass the path and let the stable Ultralytics version handle it.
+        # This bypasses all the "unexpected keyword argument" and complex loading errors.
+        model = YOLO(path)
         return model
-        
     except Exception as e:
         st.error(f"Failed to load model from '{path}'.")
-        st.error("There is a deeper incompatibility between the model's saved state and the current environment.")
+        st.error("Compatibility Error: The model file may need to be retrained or exported with the exact library versions pinned in requirements.txt.")
         st.error(f"Final Error: {e}")
         return None
 
