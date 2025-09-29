@@ -7,7 +7,6 @@ import tempfile
 import os
 import time
 import torch 
-# NOTE: Removed the 'import dill' line to prevent the ModuleNotFoundError crash.
 
 # --- Configuration ---
 # ⚠️ ACTION REQUIRED: Ensure 'best.pt' is in the root of your repository
@@ -26,9 +25,9 @@ def load_yolo_model(path):
     """
     st.info("Loading model... Please wait.")
     try:
-        # 1. Use torch.load() to load the weights file directly with the cross-OS fix.
+        # 1. CRITICAL FIX: Use torch.load() to load the weights directly with the cross-OS fix.
         # This tells PyTorch to load the model's weights onto the CPU and ignore 
-        # any platform-specific dependencies (like DLLs) saved in the checkpoint.
+        # any platform-specific dependencies (like DLLs/Windows paths) saved in the checkpoint.
         weights = torch.load(path, map_location='cpu')
 
         # 2. Save the loaded weights dictionary to a new temporary file.
@@ -37,12 +36,13 @@ def load_yolo_model(path):
         torch.save(weights, temp_path)
 
         # 3. Initialize the YOLO model using the CLEANED weights file path.
+        # This avoids the 'unexpected keyword argument' error.
         model = YOLO(temp_path, task='detect')
         return model
         
     except Exception as e:
         st.error(f"Failed to load model from '{path}'.")
-        st.error("There is a deeper incompatibility between the model's saved state and the current environment. This error is usually final.")
+        st.error("There is a deeper incompatibility between the model's saved state and the current environment.")
         st.error(f"Final Error: {e}")
         return None
 
