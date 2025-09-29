@@ -1,5 +1,7 @@
 streamlit
-ultralytics
-opencv-python-headless  # Avoids libGL/GUI dependency errors
+ultralytics==8.0.20  # Pinning to a widely stable version
+torch==2.0.1         # Pinning to a PyTorch version compatible with the Ultralytics version
+torchvision==0.15.2
+opencv-python-headless
 Pillow
 numpy
