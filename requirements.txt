@@ -1,6 +1,5 @@
 streamlit
 ultralytics
-opencv-python-headless  
+opencv-python-headless  # Avoids libGL/GUI dependency errors
 Pillow
 numpy
-dill   
