@@ -21,18 +21,29 @@ DEFAULT_INFERENCE_SIZE = 480
 @st.cache_resource 
 def load_yolo_model(path):
     """
-    Loads the YOLOv8 model, using map_location='cpu' to prevent pathing/DLL errors 
-    when loading the model file on a Linux server.
+    Loads the YOLOv8 model using PyTorch's torch.load() to safely handle 
+    cross-OS dependency issues (like map_location='cpu') before initializing YOLO.
     """
     st.info("Loading model... Please wait.")
     try:
-        # CRITICAL FIX: Use extra_load_args to pass map_location='cpu' to PyTorch
-        model = YOLO(path, task='detect', **{'extra_load_args': {'map_location': 'cpu'}})
+        # 1. Use torch.load() to load the weights file directly with the cross-OS fix.
+        # This tells PyTorch to load the model's weights onto the CPU and ignore 
+        # any platform-specific dependencies (like DLLs) saved in the checkpoint.
+        weights = torch.load(path, map_location='cpu')
+
+        # 2. Save the loaded weights dictionary to a new temporary file.
+        # This strips the checkpoint of potentially corrupting original metadata/paths.
+        temp_path = os.path.join(tempfile.gettempdir(), 'fixed_best.pt')
+        torch.save(weights, temp_path)
+
+        # 3. Initialize the YOLO model using the CLEANED weights file path.
+        model = YOLO(temp_path, task='detect')
         return model
+        
     except Exception as e:
         st.error(f"Failed to load model from '{path}'.")
-        st.error("Please ensure 'best.pt' is present and you've committed the correct requirements.txt.")
-        st.error(f"Error details: {e}")
+        st.error("There is a deeper incompatibility between the model's saved state and the current environment. This error is usually final.")
+        st.error(f"Final Error: {e}")
         return None
 
 
@@ -123,12 +134,10 @@ def process_video(uploaded_file, model, confidence, inference_size):
         # Display placeholders
         with col_original:
             st.subheader("Original Video Stream")
-            # Display original video for user reference
             st.video(uploaded_file, format="video/mp4", start_time=0) 
             
         with col_results:
             st.subheader(f"Detection Results (Inference: {inference_size}px)")
-            # Placeholder for the live annotated frames
             detection_frame_placeholder = st.empty()
             fps_text = st.empty() 
 
@@ -229,7 +238,7 @@ def process_image(uploaded_file, model, confidence, inference_size):
                 st.warning("No license plates detected at the current confidence level.")
                 st.image(image, use_container_width=True, caption="No detections found")
 
-# --- Main App UI Logic (FIXED FUNCTION DEFINITION) ---
+# --- Main App UI Logic ---
 
 def main():
     """The main function to run the Streamlit application."""
