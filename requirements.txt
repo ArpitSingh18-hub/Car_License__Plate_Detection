@@ -1,5 +1,5 @@
 streamlit
 ultralytics
-opencv-python-headless  # Use the headless version to avoid system conflicts
+opencv-python-headless  
 Pillow
 numpy
