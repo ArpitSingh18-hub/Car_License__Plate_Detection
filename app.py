@@ -6,9 +6,10 @@ import cv2
 import tempfile
 import os
 import time
+import torch 
+import dill # Import the manually added package
 
 # --- Configuration ---
-# ⚠️ ACTION REQUIRED: Ensure 'best.pt' is in the root of your GitHub repository
 MODEL_PATH = 'best.pt'
 TITLE = "AI License Plate Detector 🚗"
 CONFIDENCE_DEFAULT = 50 
@@ -19,35 +20,27 @@ DEFAULT_INFERENCE_SIZE = 480
 @st.cache_resource 
 def load_yolo_model(path):
     """
-    Loads the YOLOv8 model, including a potential fix for DLL/Pathing errors 
-    when moving model files between OS environments.
+    Loads the YOLOv8 model, using map_location='cpu' to fix Windows DLL/Pathing errors 
+    when loading the model file on a Linux server.
     """
+    st.info("Loading model... Please wait.")
     try:
-        # Try loading the model normally
-        model = YOLO(path)
+        # CRITICAL FIX: Use extra_load_args to pass map_location='cpu'
+        model = YOLO(path, task='detect', **{'extra_load_args': {'map_location': 'cpu'}})
         return model
     except Exception as e:
-        # Fallback 1: Try reloading with force_reload=True
-        try:
-            st.warning("Attempting force_reload to resolve path error...")
-            # Note: We don't use force_reload here directly as it's often not supported on non-local filesystems.
-            # We rely on the initial load and deployment environment fix. 
-            # Re-raise the original error if the simple load fails to prompt environment fix.
-            st.error(f"Failed to load model from '{path}'. Please check the file path and ensure the model file exists.")
-            st.error(f"Error details: {e}")
-            return None
-        except Exception as e_reload:
-            st.error(f"Failed to load model from '{path}'. Please check the file path and ensure the model file exists.")
-            st.error(f"Error details: {e_reload}")
-            return None
+        st.error(f"Failed to load model from '{path}'.")
+        st.error("This is likely due to the model file containing Windows-specific paths or missing dependencies (dill).")
+        st.error(f"Error details: {e}")
+        return None
 
+# The rest of the helper functions (`draw_boxes_and_confidence`, `process_video`, `process_image`) 
+# are defined here, BEFORE the main() function. 
+# (You must include their full definitions in your file)
 
 def draw_boxes_and_confidence(image_np, results, scale_factor=1.0):
-    """
-    Draws bounding boxes and confidence scores (only) on the image/frame, 
-    and applies a scale factor to resize bounding boxes back to the original frame size.
-    """
-    # Convert NumPy array to PIL Image for drawing (handling BGR/RGB)
+    # ... (Full function body goes here)
+    # [Omitted for brevity, but include the complete function from the previous step]
     is_bgr = len(image_np.shape) == 3 and image_np.shape[2] == 3 and image_np.dtype == np.uint8 and image_np[0, 0, 0] != image_np[0, 0, 2]
     
     if is_bgr:
@@ -67,22 +60,17 @@ def draw_boxes_and_confidence(image_np, results, scale_factor=1.0):
             continue
             
         for box in r.boxes:
-            # Scale coordinates back up to original frame size
             x1, y1, x2, y2 = [int(val * scale_factor) for val in box.xyxy[0]]
             confidence = float(box.conf[0]) * 100 
             
-            # Colors
             box_color = (0, 255, 0) # Green
             text_color = (255, 255, 255) # White text
             fill_color = (0, 128, 0) # Darker green for text background
 
-            # Draw rectangle for bounding box
             draw.rectangle([x1, y1, x2, y2], outline=box_color, width=3)
 
-            # Draw confidence text background
             text = f"{confidence:.1f}%"
             
-            # Calculate text dimensions
             try:
                 text_bbox = draw.textbbox((0, 0), text, font=font)
                 text_w = text_bbox[2] - text_bbox[0]
@@ -93,40 +81,32 @@ def draw_boxes_and_confidence(image_np, results, scale_factor=1.0):
             draw.rectangle([x1, y1 - text_h - 5, x1 + text_w + 5, y1], fill=fill_color)
             draw.text((x1 + 2, y1 - text_h - 3), text, font=font, fill=text_color)
             
-    # Return the annotated PIL Image (RGB) back to an RGB NumPy array
     return np.array(image_pil) 
-
-
 # --- Video Processing Function ---
 
 def process_video(uploaded_file, model, confidence, inference_size):
-    """Handles video upload, frame-by-frame processing, and smooth live display."""
+    # ... (Full function body goes here)
+    # [Omitted for brevity, but include the complete function from the previous step]
     col_original, col_results = st.columns(2)
     
     if uploaded_file is not None:
         st.toast('Video uploaded! Starting processing...', icon='📤')
         
-        # 1. Save uploaded file to a temporary file
         with tempfile.NamedTemporaryFile(delete=False) as tfile:
             tfile.write(uploaded_file.read())
             video_path = tfile.name
         
-        # 2. Open the video file using OpenCV
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             st.error("Could not open video file.")
             os.unlink(video_path)
             return
 
-        # Get video information
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        # Calculate the scaling factor for Bounding Box coordinates
         scale_factor = original_width / inference_size
         
-        # Display placeholders
         with col_original:
             st.subheader("Original Video Stream")
             st.video(uploaded_file, format="video/mp4", start_time=0) 
@@ -140,19 +120,16 @@ def process_video(uploaded_file, model, confidence, inference_size):
         progress_bar = st.progress(0, text="Processing frames...")
         frame_count = 0
         
-        # 3. Process video frame by frame
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
                 
             frame_count += 1
-            start_time = time.time() # Start timing for FPS calculation
+            start_time = time.time() 
 
-            # OPTIMIZATION: Resize the frame before inference
             resized_frame = cv2.resize(frame, (inference_size, int(original_height * (inference_size / original_width))))
             
-            # Run YOLOv8 detection on the SMALLER frame
             results = model.predict(
                 source=resized_frame, 
                 conf=confidence, 
@@ -160,10 +137,8 @@ def process_video(uploaded_file, model, confidence, inference_size):
                 save=False, show=False, verbose=False
             )
             
-            # Draw custom boxes and confidence, scaling the boxes back to the original size
             annotated_frame_rgb_np = draw_boxes_and_confidence(frame.copy(), results, scale_factor=scale_factor)
             
-            # Update the placeholder 
             detection_frame_placeholder.image(
                 annotated_frame_rgb_np, 
                 caption=f"Frame {frame_count} / {total_frames}", 
@@ -171,7 +146,6 @@ def process_video(uploaded_file, model, confidence, inference_size):
                 use_container_width=True
             )
             
-            # Update FPS and progress
             end_time = time.time()
             current_fps = 1 / (end_time - start_time)
             fps_text.info(f"⚡️ Processing Speed: **{current_fps:.2f} FPS** | Detections: {len(results[0].boxes)}")
@@ -179,7 +153,6 @@ def process_video(uploaded_file, model, confidence, inference_size):
             if total_frames > 0:
                 progress_bar.progress(frame_count / total_frames, text=f"Processing frames... {frame_count}/{total_frames}")
 
-        # 4. Cleanup
         cap.release()
         os.unlink(video_path) 
         progress_bar.empty()
@@ -189,7 +162,8 @@ def process_video(uploaded_file, model, confidence, inference_size):
 # --- Image Processing Function ---
 
 def process_image(uploaded_file, model, confidence, inference_size):
-    """Handles image upload, processing, and display."""
+    # ... (Full function body goes here)
+    # [Omitted for brevity, but include the complete function from the previous step]
     col_original, col_results = st.columns(2)
 
     if uploaded_file is not None:
@@ -200,17 +174,11 @@ def process_image(uploaded_file, model, confidence, inference_size):
             st.subheader("Original Image")
             st.image(image, use_container_width=True, caption="Uploaded Image")
         
-        # Automatic Prediction
         image_np_rgb = np.array(image)
         original_width, original_height = image.size
-        
-        # Calculate the scaling factor for Bounding Box coordinates
         scale_factor = original_width / inference_size
-        
-        # OPTIMIZATION: Resize the image before inference
         resized_image = cv2.resize(image_np_rgb, (inference_size, int(original_height * (inference_size / original_width))))
 
-        # Run YOLOv8 detection on the SMALLER image
         results = model.predict(
             source=resized_image, 
             conf=confidence, 
@@ -218,13 +186,11 @@ def process_image(uploaded_file, model, confidence, inference_size):
             save=False, show=False, verbose=False
         )
 
-        # Process and Display Results
         with col_results:
             st.subheader("Detection Results")
             if results and results[0].boxes and len(results[0].boxes) > 0:
                 st.toast(f'✅ Found {len(results[0].boxes)} license plate(s)!', icon='🎯')
                 
-                # Draw custom boxes and confidence, scaling back to original size
                 annotated_image_rgb_np = draw_boxes_and_confidence(image_np_rgb.copy(), results, scale_factor=scale_factor)
                 
                 st.image(annotated_image_rgb_np, use_container_width=True, caption="Detected License Plate(s)")
@@ -235,13 +201,12 @@ def process_image(uploaded_file, model, confidence, inference_size):
                 st.warning("No license plates detected at the current confidence level.")
                 st.image(image, use_container_width=True, caption="No detections found")
 
-# --- Python Entry Point (FIXED) ---
 
-# The entire application logic is consolidated into a function called 'main'.
+# --- Main App UI Logic (FIXED FUNCTION DEFINITION) ---
+# 🚨 This function MUST be defined *before* the if __name__ == "__main__": block
+
 def main():
     """The main function to run the Streamlit application."""
-    # This block now contains all the UI setup and calling of process_image/process_video.
-    # --- UI Setup and Logic from the previous 'main' function goes here ---
     
     st.set_page_config(
         page_title=TITLE,
@@ -271,26 +236,18 @@ def main():
     # --- Sidebar Configuration ---
     st.sidebar.header("⚙️ Settings")
     
-    # Media Source Selection
-    source_type = st.sidebar.radio(
-        "Select Source Type:",
-        ('Image', 'Video')
-    )
+    source_type = st.sidebar.radio("Select Source Type:", ('Image', 'Video'))
     
-    # Confidence Slider
     confidence = st.sidebar.slider(
-        "Detection Confidence Threshold (%)",
-        min_value=10, max_value=100, value=CONFIDENCE_DEFAULT, step=5
+        "Detection Confidence Threshold (%)", min_value=10, max_value=100, value=CONFIDENCE_DEFAULT, step=5
     ) / 100.0
     st.sidebar.info(f"Detections below {int(confidence*100)}% will be filtered out.")
     
-    # Video Optimization Slider
     inference_size = st.sidebar.slider(
-        "Inference Resolution (Faster: Low | Accurate: High)",
-        min_value=320, max_value=1280, value=DEFAULT_INFERENCE_SIZE, step=32
+        "Inference Resolution (Faster: Low | Accurate: High)", min_value=320, max_value=1280, value=DEFAULT_INFERENCE_SIZE, step=32
     )
 
-    # Model Loading
+    # Model Loading (Call with the fix)
     model = load_yolo_model(MODEL_PATH)
     if model is None:
         st.error("Application halted.")
@@ -301,17 +258,11 @@ def main():
     # --- Main Content: File Uploader ---
     
     if source_type == 'Image':
-        uploaded_file = st.file_uploader(
-            "🖼️ Choose an image file:", 
-            type=['jpg', 'jpeg', 'png']
-        )
+        uploaded_file = st.file_uploader("🖼️ Choose an image file:", type=['jpg', 'jpeg', 'png'])
         process_image(uploaded_file, model, confidence, inference_size)
         
     elif source_type == 'Video':
-        uploaded_file = st.file_uploader(
-            "📹 Choose a video file (MP4, MOV, AVI):", 
-            type=['mp4', 'avi', 'mov']
-        )
+        uploaded_file = st.file_uploader("📹 Choose a video file (MP4, MOV, AVI):", type=['mp4', 'avi', 'mov'])
         process_video(uploaded_file, model, confidence, inference_size)
 
 
