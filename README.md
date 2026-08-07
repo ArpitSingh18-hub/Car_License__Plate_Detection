@@ -19,7 +19,7 @@ An AI-powered Automatic License Plate Recognition (ALPR) system that detects veh
 ## 🛠️ Tech Stack
 
 - Python
-- YOLOv8
+- YOLOv5
 - OpenCV
 - EasyOCR / PaddleOCR
 - NumPy
